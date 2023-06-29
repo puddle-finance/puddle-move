@@ -3,7 +3,102 @@ module puddle_finance::cetus_invest{
     use cetus_clmm::config::GlobalConfig;
     use sui::balance::{Self, Balance};
     use sui::clock::{Clock};
+    use std::string::{Self, String};
+    use std::type_name::{Self};
+    use sui::object::{Self, UID, ID};
+    use sui::table::{Self, Table};
+    use sui::tx_context::{Self, TxContext};
+    use std::vector;
+    use sui::transfer;
+
     friend puddle_finance::puddle;
+
+    const ECoinNotExisted: u64 = 0;
+    const ECoinAlreadyExisted: u64 = 1;
+    
+
+    struct CetusInfo has key {
+        id: UID,
+        global_config: ID,
+        supported_coins: vector<String>,
+        coin_icon_table: Table<String, String>,
+        coin_symb_table: Table<String, String>,
+    }
+
+    struct InvestmentManagedCap has key{
+        id: UID,
+    }
+
+    fun init (ctx: &mut TxContext){
+        //default setting
+        let global_config = object::id_from_address(@0xdaa46292632c3c4d8f31f23ea0f9b36a28ff3677e9684980e4438403a67a3d8f);
+        let cetus_info = CetusInfo{
+            id: object::new(ctx),
+            global_config,
+            supported_coins: vector::empty<String>(),
+            coin_icon_table: table::new<String, String>(ctx),
+            coin_symb_table: table::new<String, String>(ctx),
+        }; 
+
+        let cap = InvestmentManagedCap{
+            id: object::new(ctx),
+        };
+        transfer::transfer(cetus_info, tx_context::sender(ctx));
+        transfer::transfer(cap, tx_context::sender(ctx));
+    }
+
+    public entry fun add_investment<T: drop>(
+        _cap: &InvestmentManagedCap,
+        cetus_info: &mut CetusInfo,
+        symbol: String, 
+        icon: String, ){
+            let coin_type= string::from_ascii(type_name::into_string(type_name::get<T>()));
+            assert!(!vector::contains<String>(&cetus_info.supported_coins, &coin_type), ECoinAlreadyExisted);
+            vector::push_back<String>(&mut cetus_info.supported_coins, coin_type);
+            table::add<String, String>(&mut cetus_info.coin_symb_table, coin_type, symbol);
+            table::add<String, String>(&mut cetus_info.coin_icon_table, coin_type, icon);
+    }
+
+    public entry fun modify_coin_symb<T:drop>(
+        _cap: &InvestmentManagedCap,
+        cetus_info: &mut CetusInfo,
+        symbol: String, ){
+            let coin_type= string::from_ascii(type_name::into_string(type_name::get<T>()));
+            assert!(vector::contains<String>(&cetus_info.supported_coins, &coin_type), ECoinNotExisted);
+            let _ = table::remove<String, String>(&mut cetus_info.coin_symb_table, coin_type);
+            table::add<String, String>(&mut cetus_info.coin_symb_table, coin_type, symbol);
+    }
+
+    public entry fun modify_coin_icon<T:drop>(
+        _cap: &InvestmentManagedCap,
+        cetus_info: &mut CetusInfo,
+        icon: String, ){
+            let coin_type= string::from_ascii(type_name::into_string(type_name::get<T>()));
+            assert!(vector::contains<String>(&cetus_info.supported_coins, &coin_type), ECoinNotExisted);
+            let _ = table::remove<String, String>(&mut cetus_info.coin_icon_table, coin_type);
+            table::add<String, String>(&mut cetus_info.coin_icon_table, coin_type, icon);
+    }
+
+    public entry fun remove_coin<T:drop>(
+        _cap: &InvestmentManagedCap,
+        cetus_info: &mut CetusInfo,){
+            let coin_type= string::from_ascii(type_name::into_string(type_name::get<T>()));
+            let (is_existed, i)= vector::index_of<String>(&cetus_info.supported_coins, &coin_type);
+            assert!(is_existed, ECoinAlreadyExisted);
+            vector::swap_remove<String>(&mut cetus_info.supported_coins, i);
+            table::remove<String, String>(&mut cetus_info.coin_icon_table, coin_type);
+            table::remove<String, String>(&mut cetus_info.coin_symb_table, coin_type);
+    }
+
+
+    public entry fun modify_global_config(
+        _cap: &InvestmentManagedCap,
+        cetus_info: &mut CetusInfo,
+        global_config: ID,
+        ctx: &mut TxContext,){
+            cetus_info.global_config = global_config;
+    }
+
 
     public(friend) fun invest<CoinA, CoinB>(
         config: &GlobalConfig,
