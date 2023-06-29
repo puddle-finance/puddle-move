@@ -4,11 +4,17 @@ module puddle_finance::puddle{
     use sui::tx_context::{Self, TxContext};
     use sui::transfer;
     use sui::object::{Self, UID, ID};
-    use sui::coin::{Self, Coin};
+    use sui::coin::{Self, Coin, TreasuryCap};
     use std::option::{Self, Option};
     use sui::table::{Self, Table};
     use std::vector;
+    use puddle_finance::cetus_invest::{Self};
+    use cetus_clmm::pool::{Self, Pool};
+    use cetus_clmm::config::GlobalConfig;
+    use sui::bag::{Self, Bag};
     use std::string::{Self, String};
+    use sui::clock::{Self, Clock};
+    use std::debug::{Self};
 
     const EOverMaxAmount: u64 = 0;
     const ENotEnough: u64 = 1;
@@ -24,13 +30,14 @@ module puddle_finance::puddle{
     const EStillHasInvestments: u64 = 11;
     const EPuddleNotFound: u64 = 12;
     const EPuddleNotClosed: u64 = 13;
+    const EBalanceNotEnough: u64 = 14;
 
     // shared object, puddle's all data
     struct Puddles<phantom T:drop> has key, store{
         id: UID,
         balance: Balance<T>,
         commission_percentage: u8,
-        state: PuddleState,
+        state: PuddleState, 
         holder_info: HolderInfo,
         market_info: MarketInfo,
         investments: InvestmentsRecord,
@@ -55,6 +62,7 @@ module puddle_finance::puddle{
     struct InvestmentsRecord has store{
         invests: vector<ID>,
         cost_table: Table<ID, u64>,
+        balance_bag: Bag,
         total_rewards: u64,
     }
 
@@ -79,7 +87,7 @@ module puddle_finance::puddle{
         desc: String,
     }
 
-    // owner object, user invest puddle proof
+     // owner object, user invest puddle proof
     struct PuddleShares<phantom T: drop> has key, store{
         id: UID,
         shares: u64,
@@ -94,12 +102,13 @@ module puddle_finance::puddle{
         item: Option<PuddleShares<T>>,
     }
 
-    // owner object, puddle owner proof
+
     struct PuddleCap<phantom T: drop> has key{
         id: UID,
         puddle_id: ID,
     }
 
+    // owner object, puddle owner proof
     fun init(ctx: &mut TxContext) {
         let puddle_statistics = PuddleStatistics{
             id: object::new(ctx),
@@ -119,7 +128,6 @@ module puddle_finance::puddle{
         desc: vector<u8>,
         ctx: &mut TxContext,
     ): Puddles<T>{
-
         let holder_info = HolderInfo{
             holders: vector::empty<address>(),
             holder_amount_table: table::new<address, u64>(ctx),
@@ -135,7 +143,7 @@ module puddle_finance::puddle{
             total_supply: 0,
             trader,
             name: string::utf8(name),
-            desc:string::utf8(desc)
+            desc:string::utf8(desc),
         };
 
         let state = PuddleState{
@@ -146,6 +154,7 @@ module puddle_finance::puddle{
         let investments = InvestmentsRecord{
             invests: vector::empty<ID>(),
             cost_table: table::new<ID, u64>(ctx),
+            balance_bag: bag::new(ctx),
             total_rewards: 0,
         };
 
@@ -412,6 +421,141 @@ module puddle_finance::puddle{
         assert!(cap.puddle_id == object::uid_to_inner(&puddle.id), EDifferentPuddle);
         assert!(puddle.state.is_stop_mint == true, EPuddleAlreadyStartMint);
         puddle.state.is_stop_mint = false;
-
     }
+
+    public entry fun invest< CoinA: drop , CoinB: drop>(
+        _puddle_cap: &mut PuddleCap<CoinB>,
+        puddle: &mut Puddles<CoinB>,
+        config: &GlobalConfig,
+        pool: &mut Pool<CoinA, CoinB>,
+        amount: u64,
+        sqrt_price_limit: u128,
+        clock: &Clock,
+        ctx: &mut TxContext,
+    ){
+        assert!(balance::value<CoinB>(&puddle.balance) >= amount, EBalanceNotEnough);
+        
+        let coin_b = &mut puddle.balance;
+        
+        let invest_balance = cetus_invest::invest<CoinA, CoinB>(
+            config,
+            pool,
+            coin_b,
+            amount,
+            sqrt_price_limit,
+            clock,
+            );
+        let investment_target = *object::borrow_id(pool);
+        
+        if (vector::contains<ID>(&puddle.investments.invests, &investment_target)){
+            let previous_cost = table::remove(&mut puddle.investments.cost_table, investment_target);
+            let final_cost = previous_cost + amount;
+            table::add<ID, u64>(&mut puddle.investments.cost_table, investment_target, final_cost);
+
+            balance::join<CoinA>(bag::borrow_mut<ID, Balance<CoinA>>(&mut puddle.investments.balance_bag, investment_target), invest_balance);
+            debug::print(bag::borrow_mut<ID, Balance<CoinA>>(&mut puddle.investments.balance_bag, investment_target));
+
+        }else{
+            vector::push_back<ID>(&mut puddle.investments.invests, investment_target);
+            table::add<ID, u64>(&mut puddle.investments.cost_table, investment_target, amount);
+            bag::add<ID, Balance<CoinA>>(&mut puddle.investments.balance_bag, investment_target, invest_balance);
+            debug::print(bag::borrow_mut<ID, Balance<CoinA>>(&mut puddle.investments.balance_bag, investment_target));
+        } 
+    }
+        
+    
+    public entry fun arbitrage<CoinA: drop , CoinB: drop >(
+        _puddle_cap: &mut PuddleCap<CoinB>,
+        puddle: &mut Puddles<CoinB>,
+        config: &GlobalConfig,
+        pool: &mut Pool<CoinA, CoinB>,
+        amount: u64,
+        sqrt_price_limit: u128,
+        clock: &Clock,
+        ctx: &mut TxContext,
+    ){
+        
+        let investment_target = *object::borrow_id(pool);
+        let coin_a = bag::borrow_mut<ID, Balance<CoinA>>(&mut puddle.investments.balance_bag, investment_target);
+        debug::print(coin_a);
+        assert!(amount <= balance::value<CoinA>(coin_a), EBalanceNotEnough);
+
+        let receive_balance = cetus_invest::arbitrage<CoinA, CoinB>(
+            config,
+            pool,
+            coin_a,
+            amount,
+            sqrt_price_limit,
+            clock,
+            );
+        
+        let cost = *table::borrow<ID, u64>(&mut puddle.investments.cost_table, investment_target) * amount / balance::value<CoinA>(coin_a) ;
+        if (cost < balance::value<CoinB>(&receive_balance)){
+            let total_rewards = (balance::value<CoinB>(&receive_balance) - cost);
+            let reward_for_trader_amounts =  total_rewards * (puddle.commission_percentage as u64) / 100;
+            let rewards_for_user_amount = total_rewards * (100 - (puddle.commission_percentage as u64)) / 100;
+
+            let trader_rewards = balance::split<CoinB>(&mut receive_balance, reward_for_trader_amounts);
+            transfer::public_transfer(coin::from_balance<CoinB>(trader_rewards, ctx), puddle.metadata.trader);
+
+
+            
+            let rewards = balance::split<CoinB>(&mut receive_balance, rewards_for_user_amount);
+            give_out_bonus<CoinB>(puddle, &mut rewards, ctx);
+
+            if (balance::value<CoinB>(&rewards) == 0){
+                balance::destroy_zero(rewards);
+            }else{
+                balance::join<CoinB>(&mut puddle.balance, rewards);
+            };
+        
+        };
+        balance::join<CoinB>(&mut puddle.balance, receive_balance);
+        
+        
+    }
+
+    fun give_out_bonus<T:drop>(
+        puddle: &mut Puddles<T>,
+        total_rewards: &mut Balance<T>,
+        ctx: &mut TxContext,
+    ){
+        let i: u64 = 0;
+        let total_supply = puddle.metadata.total_supply;
+
+        while(i < vector::length(&puddle.holder_info.holders)){
+            let user_addr = *vector::borrow<address>(&mut puddle.holder_info.holders, i);
+            let user_shares_amount = table::remove<address, u64>(&mut puddle.holder_info.holder_amount_table, user_addr);
+            let user_rewards =  balance::value<T>(total_rewards) * user_shares_amount / total_supply;
+            
+            if (balance::value<T>(total_rewards) < user_rewards){
+                let user_reward_balance = balance::split<T>(total_rewards, user_rewards);                
+                let user_reward_coin = coin::from_balance<T>(user_reward_balance, ctx);
+                transfer::public_transfer(user_reward_coin, user_addr);
+                break
+            }else{
+                let user_reward_balance = balance::split<T>(total_rewards, user_rewards);
+                let user_reward_coin = coin::from_balance<T>(user_reward_balance, ctx);
+                transfer::public_transfer(user_reward_coin, user_addr);
+                i = i + 1;
+                continue
+            }
+            
+        }
+    }
+
+    fun coins_to_balances<T>(coins: vector<Coin<T>>):vector<Balance<T>>{
+        let res = vector::empty<Balance<T>>();
+
+        while(vector::length(&coins) > 0){
+            let coin_member = vector::pop_back<Coin<T>>(&mut coins);
+            vector::push_back<Balance<T>>(&mut res, coin::into_balance(coin_member));
+        };
+        vector::destroy_empty<Coin<T>>(coins);
+
+        return res
+    }
+
+    
 }
+
