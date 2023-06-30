@@ -9,6 +9,7 @@ module puddle_finance::puddle{
     use sui::table::{Self, Table};
     use std::vector;
     use puddle_finance::cetus_invest::{Self};
+    use puddle_finance::admin::{Self, TeamFunds};
     use cetus_clmm::pool::{Self, Pool};
     use cetus_clmm::config::GlobalConfig;
     use sui::bag::{Self, Bag};
@@ -472,6 +473,7 @@ module puddle_finance::puddle{
         amount: u64,
         sqrt_price_limit: u128,
         clock: &Clock,
+        funds: &mut TeamFunds,
         ctx: &mut TxContext,
     ){
         
@@ -492,8 +494,15 @@ module puddle_finance::puddle{
         let cost = *table::borrow<ID, u64>(&mut puddle.investments.cost_table, investment_target) * amount / balance::value<CoinA>(coin_a) ;
         if (cost < balance::value<CoinB>(&receive_balance)){
             let total_rewards = (balance::value<CoinB>(&receive_balance) - cost);
-            let reward_for_trader_amounts =  total_rewards * (puddle.commission_percentage as u64) / 100;
-            let rewards_for_user_amount = total_rewards * (100 - (puddle.commission_percentage as u64)) / 100;
+            let reward_for_trader_amounts =  total_rewards * (puddle.commission_percentage as u64)* 10 / 1000;
+            let rewards_for_team = total_rewards * 5 / 1000;
+            let rewards_for_user_amount = total_rewards * (1000 - ((puddle.commission_percentage as u64)*10) -5) / 1000;
+
+            admin::deposit<CoinB>(
+                balance::split<CoinB>(&mut receive_balance, rewards_for_team), 
+                funds,
+                ctx,
+                );
 
             let trader_rewards = balance::split<CoinB>(&mut receive_balance, reward_for_trader_amounts);
             transfer::public_transfer(coin::from_balance<CoinB>(trader_rewards, ctx), puddle.metadata.trader);
