@@ -40,3 +40,7 @@ To be continue...
 Dapp git
 ---
 https://github.com/puddle-finance/dapp-ts
+
+Contract Address
+---
+<a href="https://suiexplorer.com/object/0x7407b2cbbb02c8a088ca1ea7c8863ce9920ca65428b4c165550442a2475dfe3c">0x7407b2cbbb02c8a088ca1ea7c8863ce9920ca65428b4c165550442a2475dfe3c</a>
