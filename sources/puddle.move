@@ -519,9 +519,41 @@ module puddle_finance::puddle{
             };
         
         };
-        balance::join<CoinB>(&mut puddle.balance, receive_balance);
-        
-        
+        balance::join<CoinB>(&mut puddle.balance, receive_balance);  
+    }
+
+    public entry fun modify_puddle_name<T: drop >(
+        cap: &PuddleCap<T>, 
+        puddle: &mut Puddles<T>, 
+        name: String, ){
+            assert!(cap.puddle_id == object::uid_to_inner(&puddle.id), EDifferentPuddle);
+            puddle.metadata.name = name;
+    }
+
+    public entry fun modify_puddle_desc<T: drop>(
+        cap: &PuddleCap<T>, 
+        puddle: &mut Puddles<T>, 
+        desc: String, ){
+            assert!(cap.puddle_id == object::uid_to_inner(&puddle.id), EDifferentPuddle);
+            puddle.metadata.desc = desc;
+    }
+
+    public entry fun modify_puddle_trader<T: drop>(
+        cap: &PuddleCap<T>, 
+        puddle: &mut Puddles<T>, 
+        new_trader: address, ){
+            assert!(cap.puddle_id == object::uid_to_inner(&puddle.id), EDifferentPuddle);
+            puddle.metadata.trader = new_trader;
+
+    }
+
+    public entry fun modify_puddle_commission_percentage<T: drop>(
+        cap: &PuddleCap<T>, 
+        puddle: &mut Puddles<T>, 
+        commission_percentage: u8, ){
+            assert!(cap.puddle_id == object::uid_to_inner(&puddle.id), EDifferentPuddle);
+            puddle.commission_percentage = commission_percentage;
+
     }
 
     fun give_out_bonus<T:drop>(
