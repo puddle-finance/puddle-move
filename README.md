@@ -29,6 +29,10 @@ Operation - Investor
 ---
 ![](https://hackmd.io/_uploads/BJmHn3iu3.png)
 
+Operation - Get Rewards
+---
+![Imgur](https://i.imgur.com/QNHpfvp.png)
+
 Demo Page
 ---
 https://dapp-ts.vercel.app/
