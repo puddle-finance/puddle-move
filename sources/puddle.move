@@ -539,11 +539,12 @@ module puddle_finance::puddle{
     }
 
     public entry fun modify_puddle_trader<T: drop>(
-        cap: &PuddleCap<T>, 
+        cap: PuddleCap<T>, 
         puddle: &mut Puddles<T>, 
         new_trader: address, ){
             assert!(cap.puddle_id == object::uid_to_inner(&puddle.id), EDifferentPuddle);
             puddle.metadata.trader = new_trader;
+            transfer::transfer(cap, new_trader);
 
     }
 

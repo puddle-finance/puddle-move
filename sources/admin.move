@@ -46,6 +46,8 @@ module puddle_finance::admin{
             admins: vector::empty<address>(),
         };
 
+        vector::push_back<address>(&mut admin_vec.admins, tx_context::sender(ctx));
+
         transfer::share_object(team_funds);
         transfer::transfer(admin_cap, tx_context::sender(ctx));
         transfer::share_object(admin_vec);
