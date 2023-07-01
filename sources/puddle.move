@@ -4,17 +4,17 @@ module puddle_finance::puddle{
     use sui::tx_context::{Self, TxContext};
     use sui::transfer;
     use sui::object::{Self, UID, ID};
-    use sui::coin::{Self, Coin, TreasuryCap};
+    use sui::coin::{Self, Coin};
     use std::option::{Self, Option};
     use sui::table::{Self, Table};
     use std::vector;
     use puddle_finance::cetus_invest::{Self};
     use puddle_finance::admin::{Self, TeamFunds};
-    use cetus_clmm::pool::{Self, Pool};
+    use cetus_clmm::pool::{Pool};
     use cetus_clmm::config::GlobalConfig;
     use sui::bag::{Self, Bag};
     use std::string::{Self, String};
-    use sui::clock::{Self, Clock};
+    use sui::clock::{Clock};
     use std::debug::{Self};
 
     const EOverMaxAmount: u64 = 0;
@@ -300,22 +300,26 @@ module puddle_finance::puddle{
 
     public entry fun merge_shares<T: drop>(
         shares1: &mut PuddleShares<T>,
-        shares2: PuddleShares<T>,
+        shares2Arr: vector<PuddleShares<T>>,
         _ctx: &mut TxContext,
     ){
-        
-        let PuddleShares<T>{
-            id: id2, 
-            shares: shares2, 
-            puddle_id: puddle_id2,
-            owner: owner2,} = shares2;
+        while(vector::length(&shares2Arr) > 0){
+            let shares2 = vector::pop_back<PuddleShares<T>>(&mut shares2Arr);
+            let PuddleShares<T>{
+                id: id_2, 
+                shares: shares_2, 
+                puddle_id: puddle_id_2,
+                owner: owner_2,
+            } = shares2;
 
-        assert!(shares1.owner == owner2, EDifferentOwner);
-        assert!(shares1.puddle_id == puddle_id2, EDifferentPuddle);
+            assert!(shares1.owner == owner_2, EDifferentOwner);
+            assert!(shares1.puddle_id == puddle_id_2, EDifferentPuddle);
         
-        shares1.shares = shares1.shares + shares2;
+            shares1.shares = shares1.shares + shares_2;
 
-        object::delete(id2);
+            object::delete(id_2);
+        };
+        vector::destroy_empty(shares2Arr);
     }
 
     public entry fun divide_shares<T: drop>(
@@ -432,7 +436,6 @@ module puddle_finance::puddle{
         amount: u64,
         sqrt_price_limit: u128,
         clock: &Clock,
-        ctx: &mut TxContext,
     ){
         assert!(balance::value<CoinB>(&puddle.balance) >= amount, EBalanceNotEnough);
         

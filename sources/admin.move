@@ -69,7 +69,6 @@ module puddle_finance::admin{
         _cap: &AdminCap, 
         admin_vector: &mut AdminVec,
         remove_member: address,
-        ctx: &mut TxContext,
     ){
         let (is_existed, i) = vector::index_of<address>(&mut admin_vector.admins, &remove_member);
         assert!(is_existed, EAdminNotFound);

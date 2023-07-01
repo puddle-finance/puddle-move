@@ -94,8 +94,7 @@ module puddle_finance::cetus_invest{
     public entry fun modify_global_config(
         _cap: &InvestmentManagedCap,
         cetus_info: &mut CetusInfo,
-        global_config: ID,
-        ctx: &mut TxContext,){
+        global_config: ID,){
             cetus_info.global_config = global_config;
     }
 
@@ -117,7 +116,7 @@ module puddle_finance::cetus_invest{
             sqrt_price_limit,
             clock,
         );
-        let (in_amount, out_amount) = (pool::swap_pay_amount(&flash_receipt),balance::value(&receive_a));
+        let (in_amount, _out_amount) = (pool::swap_pay_amount(&flash_receipt),balance::value(&receive_a));
         
         // pay for flash swap
         let (pay_coin_a, pay_coin_b) = (balance::zero<CoinA>(), balance::split(coin_b, in_amount));
@@ -154,7 +153,7 @@ module puddle_finance::cetus_invest{
             sqrt_price_limit,
             clock,
         );
-        let (in_amount, out_amount) = (
+        let (in_amount, _out_amount) = (
             pool::swap_pay_amount(&flash_receipt), balance::value(&receive_b));
         
         // pay for flash swap
