@@ -109,6 +109,11 @@ module puddle_finance::puddle{
         puddle_id: ID,
     }
 
+    struct UserSaleItemList has copy, drop{
+        items: vector<String>,
+    }
+    
+
     // owner object, puddle owner proof
     fun init(ctx: &mut TxContext) {
         let puddle_statistics = PuddleStatistics{
@@ -274,28 +279,34 @@ module puddle_finance::puddle{
         
         let buyer = tx_context::sender(ctx);
         let saler = puddle_shares.owner;
+
+        let saler_amount = table::remove(&mut puddle.holder_info.holder_amount_table, saler);
+        saler_amount = saler_amount - puddle_shares.shares;
+        if (saler_amount != 0){
+            table::add(&mut puddle.holder_info.holder_amount_table, saler, saler_amount);
+        };
+        let buyer_amount: u64 = 0;
+        if (table::contains(&puddle.holder_info.holder_amount_table, buyer)){
+            buyer_amount = table::remove(&mut puddle.holder_info.holder_amount_table, buyer);
+        };
+        
+        buyer_amount = buyer_amount + puddle_shares.shares;
+        table::add(&mut puddle.holder_info.holder_amount_table, buyer, buyer_amount);
+        
+
+        let _ = table::remove(&mut puddle.market_info.item_listing_table, object::uid_to_inner(&product.id));
+        table::add(&mut puddle.market_info.item_listing_table, object::uid_to_inner(&product.id),false);
+
+        let (_is_existed, index) = vector::index_of(&puddle.market_info.items, &object::uid_to_inner(&product.id));
+        vector::swap_remove(&mut puddle.market_info.items, index);
+        
+        puddle_shares.owner = buyer;
+
         let item_price = product.price;
         let coins_for_item = coin::split<T>(payments, item_price, ctx);
-
-        let saler_amount = table::remove<address, u64>(&mut puddle.holder_info.holder_amount_table, puddle_shares.owner);
-        let buyer_amount = table::remove<address, u64>(&mut puddle.holder_info.holder_amount_table, buyer);
-        saler_amount = saler_amount - puddle_shares.shares;
-        buyer_amount = buyer_amount + puddle_shares.shares;
-
-        if (saler_amount != 0){
-            table::add<address, u64>(&mut puddle.holder_info.holder_amount_table, saler, saler_amount);
-        };
-        table::add<address, u64>(&mut puddle.holder_info.holder_amount_table, buyer, buyer_amount);
-        
-
-        let _ = table::remove<ID, bool>(&mut puddle.market_info.item_listing_table, object::uid_to_inner(&product.id));
-        table::add<ID, bool>(&mut puddle.market_info.item_listing_table, object::uid_to_inner(&product.id),false);
-
-        puddle_shares.owner = buyer;
         
         transfer::public_transfer(coins_for_item, puddle_shares.owner);
-        transfer::public_transfer(puddle_shares, tx_context::sender(ctx));
-        
+        transfer::public_transfer(puddle_shares, tx_context::sender(ctx)); 
     }
 
     public entry fun merge_shares<T: drop>(
@@ -597,7 +608,5 @@ module puddle_finance::puddle{
 
         return res
     }
-
     
 }
-
