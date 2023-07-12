@@ -47,4 +47,4 @@ https://github.com/puddle-finance/dapp-ts
 
 Contract Address
 ---
-<a href="https://suiexplorer.com/object/0x5659308e280c6e971bb369ba531d450afc326ce3f11d065a0e5ec733d9993ad0">0x5659308e280c6e971bb369ba531d450afc326ce3f11d065a0e5ec733d9993ad0</a>
+0xb8226df4ab8b4afacdfbef6111ec0a09f6fe7c30a9d3fe553666b63f4d8fb1f4
