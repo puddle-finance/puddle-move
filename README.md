@@ -39,7 +39,7 @@ https://dapp-ts.vercel.app/
 
 Demo Video
 ---
-To be continue...
+https://www.youtube.com/watch?v=iEyJUkBA7lk
 
 Dapp git
 ---
