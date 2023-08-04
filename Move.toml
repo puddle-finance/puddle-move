@@ -1,7 +1,6 @@
 [package]
 name = "puddle_finance"
-version = "0.0.2"
-published-at = "0x3a595b899e4af8fe160b9326e7b0ea74f2a45c9c590f75e94987a877a3361882"
+version = "0.0.1"
 
 [dependencies]
 #Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/testnet" }
