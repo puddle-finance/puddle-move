@@ -1,5 +1,6 @@
 module puddle_finance::puddle{
     
+    use sui::kiosk::{Kiosk};
     use sui::balance::{Self, Balance};
     use sui::tx_context::{Self, TxContext};
     use sui::transfer;
@@ -9,13 +10,12 @@ module puddle_finance::puddle{
     use sui::table::{Self, Table};
     use std::vector;
     use puddle_finance::cetus_invest::{Self};
-    use puddle_finance::admin::{Self, TeamFunds};
+    use puddle_finance::admin::{Self, TeamFund};
     use cetus_clmm::pool::{Self, Pool};
     use cetus_clmm::config::GlobalConfig;
     use sui::bag::{Self, Bag};
     use std::string::{Self, String};
     use sui::clock::{Self, Clock};
-    use std::debug::{Self};
 
     const EOverMaxAmount: u64 = 0;
     const ENotEnough: u64 = 1;
@@ -32,9 +32,10 @@ module puddle_finance::puddle{
     const EPuddleNotFound: u64 = 12;
     const EPuddleNotClosed: u64 = 13;
     const EBalanceNotEnough: u64 = 14;
+    const ENotInKiosk: u64 = 15;
 
     // shared object, puddle's all data
-    struct Puddles<phantom T:drop> has key, store{
+    struct Puddle<phantom T:drop> has key, store{
         id: UID,
         balance: Balance<T>,
         commission_percentage: u8,
@@ -46,7 +47,7 @@ module puddle_finance::puddle{
     }
 
     // shared object, record all puddle address
-    struct PuddleStatistics has key{
+    struct PuddleStatistic has key{
         id: UID,
         in_progress_puddles: vector<ID>,
         closed_puddles: vector<ID>,
@@ -67,10 +68,11 @@ module puddle_finance::puddle{
         total_rewards: u64,
     }
 
+
     // Puddles's field, record SaleItem object id
     struct MarketInfo has store{
-        items: vector<ID>,
-        item_listing_table: Table<ID, bool>,
+        kiosk_objs: vector<ID>,
+        kiosk_item_table: Table<ID, vector<ID>>, //kiosk -> item
     }
 
     // Puddles's field, user invest amount
@@ -89,7 +91,7 @@ module puddle_finance::puddle{
     }
 
      // owner object, user invest puddle proof
-    struct PuddleShares<phantom T: drop> has key, store{
+    struct PuddleShare<phantom T: drop> has key, store{
         id: UID,
         shares: u64,
         puddle_id: ID,
@@ -100,7 +102,7 @@ module puddle_finance::puddle{
     struct SaleItem<phantom T: drop> has key{
         id: UID,
         price: u64,
-        item: Option<PuddleShares<T>>,
+        item: Option<PuddleShare<T>>,
     }
 
 
@@ -112,11 +114,16 @@ module puddle_finance::puddle{
     struct UserSaleItemList has copy, drop{
         items: vector<String>,
     }
+
+    //hot potato
+    struct Increase {
+        amount: u64,
+    }
     
 
     // owner object, puddle owner proof
     fun init(ctx: &mut TxContext) {
-        let puddle_statistics = PuddleStatistics{
+        let puddle_statistics = PuddleStatistic{
             id: object::new(ctx),
             in_progress_puddles: vector::empty<ID>(),
             closed_puddles: vector::empty<ID>(),
@@ -133,15 +140,15 @@ module puddle_finance::puddle{
         name: vector<u8>,
         desc: vector<u8>,
         ctx: &mut TxContext,
-    ): Puddles<T>{
+    ): Puddle<T>{
         let holder_info = HolderInfo{
             holders: vector::empty<address>(),
             holder_amount_table: table::new<address, u64>(ctx),
         };
         
         let market_info = MarketInfo{
-            items: vector::empty<ID>(),
-            item_listing_table: table::new<ID, bool>(ctx),
+            kiosk_objs: vector::empty<ID>(),
+            kiosk_item_table: table::new<ID, vector<ID>>(ctx),
         };
 
         let metadata = PuddleMetaData{
@@ -164,7 +171,7 @@ module puddle_finance::puddle{
             total_rewards: 0,
         };
 
-        Puddles<T>{
+        Puddle<T>{
             id: object::new(ctx),
             balance: balance::zero<T>(),
             commission_percentage,
@@ -177,7 +184,7 @@ module puddle_finance::puddle{
     }
 
     public entry fun create_puddle<T: drop>(
-        global: &mut PuddleStatistics,
+        global: &mut PuddleStatistic,
         max_amount: u64,
         trader: address,
         commission_percentage: u8,
@@ -200,7 +207,7 @@ module puddle_finance::puddle{
     }
 
     public entry fun mint <T: drop>(
-        puddle: &mut Puddles<T>,
+        puddle: &mut Puddle<T>,
         amount: u64, 
         coins: &mut Coin<T>,
         ctx: &mut TxContext
@@ -225,7 +232,7 @@ module puddle_finance::puddle{
             table::add(&mut puddle.holder_info.holder_amount_table, sender, amount);
         };
 
-        let shares = PuddleShares<T>{
+        let shares = PuddleShare<T>{
             id: object::new(ctx),
             shares: balance::value<T>(&invest_balance),
             puddle_id: object::uid_to_inner(&puddle.id),
@@ -237,85 +244,14 @@ module puddle_finance::puddle{
         transfer::public_transfer(shares, tx_context::sender(ctx));
     }
 
-    public entry fun sale_shares<T:drop>(
-        puddle: &mut Puddles<T>,
-        shares: PuddleShares<T>,
-        price: u64,
-        ctx: &mut TxContext,
-    ){
-        assert!(puddle.state.is_close ==false, EPuddleClosed);
-
-        let sale_item = SaleItem<T>{
-            id: object::new(ctx),
-            price,
-            item: option::none(),
-        };
-        option::fill(&mut sale_item.item, shares);
-
-        table::add<ID, bool>(&mut puddle.market_info.item_listing_table, object::uid_to_inner(&sale_item.id), true);
-        vector::push_back<ID>(&mut puddle.market_info.items, object::uid_to_inner(&sale_item.id));
-
-        transfer::share_object(sale_item);
-    }
-
-    public entry fun cancel_sale_shares<T: drop>(
-        product: &mut SaleItem<T>,
-        ctx: &mut TxContext,
-    ){
-        let puddle_share = option::extract(&mut product.item);
-        transfer::public_transfer(puddle_share, tx_context::sender(ctx));
-    }
-
-    public entry fun buy_shares<T: drop>(
-        puddle: &mut Puddles<T>,
-        product: &mut SaleItem<T>,
-        payments: &mut Coin<T>,
-        ctx: &mut TxContext,
-    ){
-        assert!(puddle.state.is_close == false, EPuddleClosed);
-        assert!(option::is_some<PuddleShares<T>>(&product.item),EItemIsSaled);
-        let puddle_shares = option::extract(&mut product.item);
-        assert!(coin::value<T>(payments) >= product.price, ENotEnough);
-        
-        let buyer = tx_context::sender(ctx);
-        let saler = puddle_shares.owner;
-
-        let saler_amount = table::remove(&mut puddle.holder_info.holder_amount_table, saler);
-        saler_amount = saler_amount - puddle_shares.shares;
-        if (saler_amount != 0){
-            table::add(&mut puddle.holder_info.holder_amount_table, saler, saler_amount);
-        };
-        let buyer_amount: u64 = 0;
-        if (table::contains(&puddle.holder_info.holder_amount_table, buyer)){
-            buyer_amount = table::remove(&mut puddle.holder_info.holder_amount_table, buyer);
-        };
-        
-        buyer_amount = buyer_amount + puddle_shares.shares;
-        table::add(&mut puddle.holder_info.holder_amount_table, buyer, buyer_amount);
-        
-
-        let _ = table::remove(&mut puddle.market_info.item_listing_table, object::uid_to_inner(&product.id));
-        table::add(&mut puddle.market_info.item_listing_table, object::uid_to_inner(&product.id),false);
-
-        let (_is_existed, index) = vector::index_of(&puddle.market_info.items, &object::uid_to_inner(&product.id));
-        vector::swap_remove(&mut puddle.market_info.items, index);
-        
-        puddle_shares.owner = buyer;
-
-        let item_price = product.price;
-        let coins_for_item = coin::split<T>(payments, item_price, ctx);
-        
-        transfer::public_transfer(coins_for_item, puddle_shares.owner);
-        transfer::public_transfer(puddle_shares, tx_context::sender(ctx)); 
-    }
 
     public entry fun merge_shares<T: drop>(
-        shares1: &mut PuddleShares<T>,
-        shares2: PuddleShares<T>,
+        shares1: &mut PuddleShare<T>,
+        shares2: PuddleShare<T>,
         _ctx: &mut TxContext,
     ){
         
-        let PuddleShares<T>{
+        let PuddleShare<T>{
             id: id2, 
             shares: shares2, 
             puddle_id: puddle_id2,
@@ -330,7 +266,7 @@ module puddle_finance::puddle{
     }
 
     public entry fun divide_shares<T: drop>(
-        shares: &mut PuddleShares<T>,
+        shares: &mut PuddleShare<T>,
         amount: u64,
         ctx: &mut TxContext,
     ){
@@ -338,7 +274,7 @@ module puddle_finance::puddle{
 
         shares.shares = shares.shares - amount;
 
-        let new_shares = PuddleShares<T>{
+        let new_shares = PuddleShare<T>{
             id: object::new(ctx),
             shares: amount,
             puddle_id: shares.puddle_id,
@@ -349,8 +285,8 @@ module puddle_finance::puddle{
     }
 
     public entry fun transfer_shares<T: drop>(
-        puddle: &mut Puddles<T>,
-        shares: PuddleShares<T>,
+        puddle: &mut Puddle<T>,
+        shares: PuddleShare<T>,
         to: address,
         ctx: &mut TxContext,
     ){
@@ -371,7 +307,7 @@ module puddle_finance::puddle{
 
     public entry fun withdraw_puddle_balance<T:drop>(
         _cap: &PuddleCap<T>,
-        puddle: &mut Puddles<T>,
+        puddle: &mut Puddle<T>,
         ctx: &mut TxContext,
     ){
         assert!(puddle.state.is_close == true, EPuddleNotClosed);
@@ -399,8 +335,8 @@ module puddle_finance::puddle{
 
     public entry fun close_puddle<T: drop>(
         cap: &PuddleCap<T>, 
-        global: &mut PuddleStatistics,
-        puddle: &mut Puddles<T>,
+        global: &mut PuddleStatistic,
+        puddle: &mut Puddle<T>,
         _ctx: &mut TxContext,
     ){
         assert!(vector::is_empty<ID>(&puddle.investments.invests) == true, EStillHasInvestments);
@@ -416,7 +352,7 @@ module puddle_finance::puddle{
 
     public entry fun stop_mint<T:drop>(
         cap: &PuddleCap<T>, 
-        puddle: &mut Puddles<T>,
+        puddle: &mut Puddle<T>,
         _ctx: &mut TxContext,
     ){
         assert!(cap.puddle_id == object::uid_to_inner(&puddle.id), EDifferentPuddle);
@@ -427,7 +363,7 @@ module puddle_finance::puddle{
 
     public entry fun restart_mint<T: drop>(
         cap: &PuddleCap<T>, 
-        puddle: &mut Puddles<T>,
+        puddle: &mut Puddle<T>,
         _ctx: &mut TxContext,
     ){
         assert!(cap.puddle_id == object::uid_to_inner(&puddle.id), EDifferentPuddle);
@@ -436,16 +372,17 @@ module puddle_finance::puddle{
     }
 
     public entry fun invest< CoinA: drop , CoinB: drop>(
-        _puddle_cap: &mut PuddleCap<CoinB>,
-        puddle: &mut Puddles<CoinB>,
+        puddle_cap: &mut PuddleCap<CoinB>,
+        puddle: &mut Puddle<CoinB>,
         config: &GlobalConfig,
         pool: &mut Pool<CoinA, CoinB>,
         amount: u64,
         sqrt_price_limit: u128,
         clock: &Clock,
-        ctx: &mut TxContext,
+        _ctx: &mut TxContext,
     ){
         assert!(balance::value<CoinB>(&puddle.balance) >= amount, EBalanceNotEnough);
+        assert!(object::uid_to_inner(&puddle.id) == puddle_cap.puddle_id, EDifferentPuddle);
         
         let coin_b = &mut puddle.balance;
         
@@ -465,32 +402,28 @@ module puddle_finance::puddle{
             table::add<ID, u64>(&mut puddle.investments.cost_table, investment_target, final_cost);
 
             balance::join<CoinA>(bag::borrow_mut<ID, Balance<CoinA>>(&mut puddle.investments.balance_bag, investment_target), invest_balance);
-            debug::print(bag::borrow_mut<ID, Balance<CoinA>>(&mut puddle.investments.balance_bag, investment_target));
-
         }else{
             vector::push_back<ID>(&mut puddle.investments.invests, investment_target);
             table::add<ID, u64>(&mut puddle.investments.cost_table, investment_target, amount);
             bag::add<ID, Balance<CoinA>>(&mut puddle.investments.balance_bag, investment_target, invest_balance);
-            debug::print(bag::borrow_mut<ID, Balance<CoinA>>(&mut puddle.investments.balance_bag, investment_target));
         } 
     }
         
     
     public entry fun arbitrage<CoinA: drop , CoinB: drop >(
         _puddle_cap: &mut PuddleCap<CoinB>,
-        puddle: &mut Puddles<CoinB>,
+        puddle: &mut Puddle<CoinB>,
         config: &GlobalConfig,
         pool: &mut Pool<CoinA, CoinB>,
         amount: u64,
         sqrt_price_limit: u128,
         clock: &Clock,
-        funds: &mut TeamFunds,
+        fund: &mut TeamFund,
         ctx: &mut TxContext,
     ){
         
         let investment_target = *object::borrow_id(pool);
         let coin_a = bag::borrow_mut<ID, Balance<CoinA>>(&mut puddle.investments.balance_bag, investment_target);
-        debug::print(coin_a);
         assert!(amount <= balance::value<CoinA>(coin_a), EBalanceNotEnough);
 
         let receive_balance = cetus_invest::arbitrage<CoinA, CoinB>(
@@ -511,8 +444,7 @@ module puddle_finance::puddle{
 
             admin::deposit<CoinB>(
                 balance::split<CoinB>(&mut receive_balance, rewards_for_team), 
-                funds,
-                ctx,
+                fund,
                 );
 
             let trader_rewards = balance::split<CoinB>(&mut receive_balance, reward_for_trader_amounts);
@@ -535,7 +467,7 @@ module puddle_finance::puddle{
 
     public entry fun modify_puddle_name<T: drop >(
         cap: &PuddleCap<T>, 
-        puddle: &mut Puddles<T>, 
+        puddle: &mut Puddle<T>, 
         name: String, ){
             assert!(cap.puddle_id == object::uid_to_inner(&puddle.id), EDifferentPuddle);
             puddle.metadata.name = name;
@@ -543,7 +475,7 @@ module puddle_finance::puddle{
 
     public entry fun modify_puddle_desc<T: drop>(
         cap: &PuddleCap<T>, 
-        puddle: &mut Puddles<T>, 
+        puddle: &mut Puddle<T>, 
         desc: String, ){
             assert!(cap.puddle_id == object::uid_to_inner(&puddle.id), EDifferentPuddle);
             puddle.metadata.desc = desc;
@@ -551,7 +483,7 @@ module puddle_finance::puddle{
 
     public entry fun modify_puddle_trader<T: drop>(
         cap: PuddleCap<T>, 
-        puddle: &mut Puddles<T>, 
+        puddle: &mut Puddle<T>, 
         new_trader: address, ){
             assert!(cap.puddle_id == object::uid_to_inner(&puddle.id), EDifferentPuddle);
             puddle.metadata.trader = new_trader;
@@ -561,7 +493,7 @@ module puddle_finance::puddle{
 
     public entry fun modify_puddle_commission_percentage<T: drop>(
         cap: &PuddleCap<T>, 
-        puddle: &mut Puddles<T>, 
+        puddle: &mut Puddle<T>, 
         commission_percentage: u8, ){
             assert!(cap.puddle_id == object::uid_to_inner(&puddle.id), EDifferentPuddle);
             puddle.commission_percentage = commission_percentage;
@@ -569,7 +501,7 @@ module puddle_finance::puddle{
     }
 
     fun give_out_bonus<T:drop>(
-        puddle: &mut Puddles<T>,
+        puddle: &mut Puddle<T>,
         total_rewards: &mut Balance<T>,
         ctx: &mut TxContext,
     ){
@@ -593,7 +525,6 @@ module puddle_finance::puddle{
                 i = i + 1;
                 continue
             }
-            
         }
     }
 
@@ -607,6 +538,76 @@ module puddle_finance::puddle{
         vector::destroy_empty<Coin<T>>(coins);
 
         return res
+    }
+
+    public fun remove_market_item<T: drop>(
+        kiosk_obj: &mut Kiosk,
+        puddle: &mut Puddle<T>,
+        item: ID,
+    ){
+        let items = table::borrow_mut(&mut puddle.market_info.kiosk_item_table,  *object::borrow_id(kiosk_obj));
+        let (is_existed, index) = vector::index_of(items, &item);
+        assert!(is_existed, ENotInKiosk);
+        vector::swap_remove(items, index);
+    }
+
+    public fun decrease_share_amount<T: drop>(
+        puddle: &mut Puddle<T>,
+        amount: u64,
+        saler: address,
+    ): Increase{
+
+        let saler_amount = table::remove(&mut puddle.holder_info.holder_amount_table, saler);
+        saler_amount = saler_amount - amount;
+        if (saler_amount != 0){
+            table::add(&mut puddle.holder_info.holder_amount_table, saler, saler_amount);
+        };
+        Increase{
+            amount: saler_amount,
+        }
+    }
+
+    public fun increase_share_amount<T: drop>(
+        puddle: &mut Puddle<T>,
+        buyer: address, 
+        increase: Increase,
+    ){
+        let Increase{ amount, } = increase;
+        let buyer_amount: u64 = 0;
+        if (table::contains(&puddle.holder_info.holder_amount_table, buyer)){
+            buyer_amount = table::remove(&mut puddle.holder_info.holder_amount_table, buyer);
+        };
+
+        buyer_amount = buyer_amount + amount;
+        table::add(&mut puddle.holder_info.holder_amount_table, buyer, buyer_amount);
+        
+    }
+    
+
+    public fun add_market_info<T: drop>(
+        puddle: &mut Puddle<T>,
+        kiosk_obj: &mut Kiosk,
+        item_id: ID,
+    ){
+        let kiosk_id =  *object:: borrow_id(kiosk_obj);
+
+        if (!table::contains(&mut puddle.market_info.kiosk_item_table, kiosk_id)){
+            vector::push_back(&mut puddle.market_info.kiosk_objs, kiosk_id);
+            let items = vector::empty<ID>();
+            vector::push_back(&mut items, item_id);
+            table::add(&mut puddle.market_info.kiosk_item_table, kiosk_id, items);
+        }else{
+            let items = table::remove(&mut puddle.market_info.kiosk_item_table, kiosk_id);
+            vector::push_back(&mut items, item_id);
+            table::add(&mut puddle.market_info.kiosk_item_table, kiosk_id, items);
+        }
+       
+    }
+
+    public fun get_puddle_close_state<T: drop>(
+        puddle: &Puddle<T>
+    ): bool{
+        puddle.state.is_close
     }
     
 }

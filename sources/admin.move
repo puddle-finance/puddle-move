@@ -15,6 +15,7 @@ module puddle_finance::admin{
     const EBalanceNotEnough: u64 = 2;
 
     friend puddle_finance::puddle;
+    friend puddle_finance::market;
 
     struct AdminVec has key {
         id: UID,
@@ -25,7 +26,7 @@ module puddle_finance::admin{
         id: UID,
     }
 
-    struct TeamFunds has key{
+    struct TeamFund has key{
         id: UID,
         balance_bag: Bag,
         key_vector: vector<String>,
@@ -33,7 +34,7 @@ module puddle_finance::admin{
 
 
     fun init(ctx: &mut TxContext){
-        let team_funds = TeamFunds{
+        let team_funds = TeamFund{
             id: object::new(ctx),
             balance_bag: bag::new(ctx),
             key_vector: vector::empty<String>(),
@@ -79,8 +80,7 @@ module puddle_finance::admin{
 
     public(friend) fun deposit<T>(
         bal: Balance<T>,
-        funds: &mut TeamFunds,
-        _ctx: &mut TxContext,
+        funds: &mut TeamFund,
     ){
         let coin_type= string::from_ascii(type_name::into_string(type_name::get<T>()));
     
@@ -97,14 +97,14 @@ module puddle_finance::admin{
     public entry fun withdraw<T>(
          _cap: &AdminCap, 
          admin_vector:&mut AdminVec,
-         funds: &mut TeamFunds,
+         fund: &mut TeamFund,
          to: address,
          amount: u64,
          ctx: &mut TxContext,
     ){
         let coin_type= string::from_ascii(type_name::into_string(type_name::get<T>()));
         assert!(vector::contains<address>(&mut admin_vector.admins, &tx_context::sender(ctx)), EAdminNotFound);
-        let total_balance = bag::borrow_mut<String, Balance<T>>(&mut funds.balance_bag, coin_type);
+        let total_balance = bag::borrow_mut<String, Balance<T>>(&mut fund.balance_bag, coin_type);
         assert!(balance::value<T>(total_balance) >= amount, EBalanceNotEnough);
 
         let withdraw_balance = balance::split(total_balance, amount);
