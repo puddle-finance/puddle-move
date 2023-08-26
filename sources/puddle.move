@@ -6,7 +6,7 @@ module puddle_finance::puddle{
     use sui::transfer;
     use sui::object::{Self, UID, ID};
     use sui::coin::{Self, Coin};
-    use std::option::{Self, Option};
+    use std::option::{Option};
     use sui::table::{Self, Table};
     use std::vector;
     use puddle_finance::cetus_invest::{Self};
@@ -246,37 +246,31 @@ module puddle_finance::puddle{
 
 
     public entry fun merge_shares<T: drop>(
-        shares1: &mut PuddleShare<T>,
-        shares2: PuddleShare<T>,
+        base: &mut PuddleShare<T>,
+        shares_vec: vector<PuddleShare<T>>,
         _ctx: &mut TxContext,
     ){
-        while(vector::length(&shares2Arr) > 0){
-            let shares2 = vector::pop_back<PuddleShares<T>>(&mut shares2Arr);
-            let PuddleShares<T>{
-                id: id_2, 
-                shares: shares_2, 
-                puddle_id: puddle_id_2,
-                owner: owner_2,
+        while(vector::length(&shares_vec) > 0){
+            let shares2 = vector::pop_back<PuddleShare<T>>(&mut shares_vec);
+            let PuddleShare<T>{
+                id, 
+                shares, 
+                puddle_id,
+                owner,
             } = shares2;
 
-            assert!(shares1.owner == owner_2, EDifferentOwner);
-            assert!(shares1.puddle_id == puddle_id_2, EDifferentPuddle);
-        
+            assert!(base.owner == owner, EDifferentOwner);
+            assert!(base.puddle_id == puddle_id, EDifferentPuddle);
 
-        let PuddleShare<T>{
-            id: id2, 
-            shares: shares2, 
-            puddle_id: puddle_id2,
-            owner: owner2,} = shares2;
+            base.shares = base.shares + shares;
 
-        assert!(shares1.owner == owner2, EDifferentOwner);
-        assert!(shares1.puddle_id == puddle_id2, EDifferentPuddle);
-        
-        shares1.shares = shares1.shares + shares2;
+            object::delete(id);
 
-            object::delete(id_2);
+            
         };
-        vector::destroy_empty(shares2Arr);
+
+        vector::destroy_empty(shares_vec);
+        
     }
 
     public entry fun divide_shares<T: drop>(
