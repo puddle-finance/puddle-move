@@ -6,34 +6,36 @@ module puddle_finance::admin{
     use sui::coin::{Self};
     use sui::bag::{Self, Bag};
     use std::string::{Self, String};
+    use sui::vec_set::{Self, VecSet};
     use sui::tx_context::{Self, TxContext};
     use std::vector;
     use std::type_name::{Self};
+    
 
     const EAlreadyAdmin: u64 = 0;
     const EAdminNotFound:u64 = 1;
     const EBalanceNotEnough: u64 = 2;
 
     friend puddle_finance::puddle;
+    friend puddle_finance::market;
 
     struct AdminVec has key {
         id: UID,
-        admins: vector<address>,
+        admins: VecSet<address>,
     }
 
     struct AdminCap has key {
         id: UID,
     }
 
-    struct TeamFunds has key{
+    struct TeamFund has key{
         id: UID,
         balance_bag: Bag,
         key_vector: vector<String>,
     }
 
-
     fun init(ctx: &mut TxContext){
-        let team_funds = TeamFunds{
+        let team_funds = TeamFund{
             id: object::new(ctx),
             balance_bag: bag::new(ctx),
             key_vector: vector::empty<String>(),
@@ -43,10 +45,10 @@ module puddle_finance::admin{
 
         let admin_vec = AdminVec{
             id: object::new(ctx),
-            admins: vector::empty<address>(),
+            admins: vec_set::empty<address>(),
         };
 
-        vector::push_back<address>(&mut admin_vec.admins, tx_context::sender(ctx));
+        vec_set::insert<address>(&mut admin_vec.admins, tx_context::sender(ctx));
 
         transfer::share_object(team_funds);
         transfer::transfer(admin_cap, tx_context::sender(ctx));
@@ -58,8 +60,8 @@ module puddle_finance::admin{
         admin_vector: &mut AdminVec,
         new_member: address, 
         ctx: &mut TxContext){
-            assert!(!vector::contains<address>(&mut admin_vector.admins, &new_member),EAlreadyAdmin );
-            vector::push_back<address>(&mut admin_vector.admins, new_member);
+            assert!(!vec_set::contains<address>(&mut admin_vector.admins, &new_member),EAlreadyAdmin );
+            vec_set::insert<address>(&mut admin_vector.admins, new_member);
 
             let admin_cap = AdminCap{id: object::new(ctx),};
             transfer::transfer(admin_cap, new_member);
@@ -70,16 +72,12 @@ module puddle_finance::admin{
         admin_vector: &mut AdminVec,
         remove_member: address,
     ){
-        let (is_existed, i) = vector::index_of<address>(&mut admin_vector.admins, &remove_member);
-        assert!(is_existed, EAdminNotFound);
-
-        vector::swap_remove<address>(&mut admin_vector.admins, i);
+        vec_set::remove<address>(&mut admin_vector.admins, &remove_member);
     }
 
     public(friend) fun deposit<T>(
         bal: Balance<T>,
-        funds: &mut TeamFunds,
-        _ctx: &mut TxContext,
+        funds: &mut TeamFund,
     ){
         let coin_type= string::from_ascii(type_name::into_string(type_name::get<T>()));
     
@@ -96,14 +94,14 @@ module puddle_finance::admin{
     public entry fun withdraw<T>(
          _cap: &AdminCap, 
          admin_vector:&mut AdminVec,
-         funds: &mut TeamFunds,
+         fund: &mut TeamFund,
          to: address,
          amount: u64,
          ctx: &mut TxContext,
     ){
         let coin_type= string::from_ascii(type_name::into_string(type_name::get<T>()));
-        assert!(vector::contains<address>(&mut admin_vector.admins, &tx_context::sender(ctx)), EAdminNotFound);
-        let total_balance = bag::borrow_mut<String, Balance<T>>(&mut funds.balance_bag, coin_type);
+        assert!(vec_set::contains<address>(&mut admin_vector.admins, &tx_context::sender(ctx)), EAdminNotFound);
+        let total_balance = bag::borrow_mut<String, Balance<T>>(&mut fund.balance_bag, coin_type);
         assert!(balance::value<T>(total_balance) >= amount, EBalanceNotEnough);
 
         let withdraw_balance = balance::split(total_balance, amount);
