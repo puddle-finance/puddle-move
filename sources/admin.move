@@ -71,7 +71,6 @@ module puddle_finance::admin{
         _cap: &AdminCap, 
         admin_vector: &mut AdminVec,
         remove_member: address,
-        ctx: &mut TxContext,
     ){
         vec_set::remove<address>(&mut admin_vector.admins, &remove_member);
     }

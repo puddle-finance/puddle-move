@@ -5,7 +5,7 @@ module puddle_finance::puddle{
     use sui::tx_context::{Self, TxContext};
     use sui::transfer;
     use sui::object::{Self, UID, ID};
-    use sui::coin::{Self, Coin, TreasuryCap};
+    use sui::coin::{Self, Coin};
     use std::option::{Self, Option};
     use sui::table::{Self, Table};
     use std::vector;
@@ -250,7 +250,19 @@ module puddle_finance::puddle{
         shares2: PuddleShare<T>,
         _ctx: &mut TxContext,
     ){
+        while(vector::length(&shares2Arr) > 0){
+            let shares2 = vector::pop_back<PuddleShares<T>>(&mut shares2Arr);
+            let PuddleShares<T>{
+                id: id_2, 
+                shares: shares_2, 
+                puddle_id: puddle_id_2,
+                owner: owner_2,
+            } = shares2;
+
+            assert!(shares1.owner == owner_2, EDifferentOwner);
+            assert!(shares1.puddle_id == puddle_id_2, EDifferentPuddle);
         
+
         let PuddleShare<T>{
             id: id2, 
             shares: shares2, 
@@ -262,7 +274,9 @@ module puddle_finance::puddle{
         
         shares1.shares = shares1.shares + shares2;
 
-        object::delete(id2);
+            object::delete(id_2);
+        };
+        vector::destroy_empty(shares2Arr);
     }
 
     public entry fun divide_shares<T: drop>(

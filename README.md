@@ -1,3 +1,6 @@
+Puddle Finance 
+===
+
 Description
 ---
 Puddle Finance is a decentralized fund platform on SUI network, where traders, businesses, or senior investors can create funds using Puddle Finance. Users can entrust their assets to trusted funds for investment, and when the funds generate profits, they are shared with the investors.
@@ -26,14 +29,22 @@ Operation - Investor
 ---
 ![](https://hackmd.io/_uploads/BJmHn3iu3.png)
 
+Operation - Get Rewards
+---
+![Imgur](https://i.imgur.com/QNHpfvp.png)
+
 Demo Page
 ---
 https://dapp-ts.vercel.app/
 
 Demo Video
 ---
-To be continue...
+https://www.youtube.com/watch?v=iEyJUkBA7lk
 
 Dapp git
 ---
 https://github.com/puddle-finance/dapp-ts
+
+Contract Address
+---
+0xb8226df4ab8b4afacdfbef6111ec0a09f6fe7c30a9d3fe553666b63f4d8fb1f4
