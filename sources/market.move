@@ -61,6 +61,8 @@ module puddle_finance::market{
         assert!(!table::contains<address, ID>(&market_state.user_kiosk_table, tx_context::sender(ctx)), EUserAlreadyHaveKiosk);
         let (kiosk, kiosk_cap) = kiosk::new(ctx);
 
+        table::add(&mut market_state.user_kiosk_table, tx_context::sender(ctx), object::id(&kiosk_cap));
+
         transfer::public_transfer(kiosk_cap, tx_context::sender(ctx));
         transfer::public_share_object(kiosk);
     }
