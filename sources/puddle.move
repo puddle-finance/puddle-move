@@ -6,25 +6,21 @@ module puddle_finance::puddle{
     use sui::transfer;
     use sui::object::{Self, UID, ID};
     use sui::coin::{Self, Coin};
-    use std::option::{Option};
     use sui::table::{Self, Table};
     use std::vector;
     use puddle_finance::cetus_invest::{Self};
     use puddle_finance::admin::{Self, TeamFund};
-    use cetus_clmm::pool::{Self, Pool};
+    use cetus_clmm::pool::{Pool};
     use cetus_clmm::config::GlobalConfig;
     use sui::bag::{Self, Bag};
     use std::string::{Self, String};
-    use sui::clock::{Self, Clock};
+    use sui::clock::{Clock};
 
     const EOverMaxAmount: u64 = 0;
-    const ENotEnough: u64 = 1;
     const EDifferentOwner: u64 = 2;
     const EDifferentPuddle: u64 = 3;
     const EOverSharesAmount: u64 = 4;
     const EObjectCoinNotEnough: u64 = 5;
-    const EItemIsSaled: u64 = 6;
-    const EPuddleClosed: u64 = 7;
     const EPuddleAlreadyClosed: u64 = 8;
     const EPuddleAlreadyStopMint: u64 = 9;
     const EPuddleAlreadyStartMint: u64 = 10;
@@ -98,21 +94,9 @@ module puddle_finance::puddle{
         owner: address,
     }
 
-    // shared object, if user shell PuddleShares
-    struct SaleItem<phantom T: drop> has key{
-        id: UID,
-        price: u64,
-        item: Option<PuddleShare<T>>,
-    }
-
-
     struct PuddleCap<phantom T: drop> has key{
         id: UID,
         puddle_id: ID,
-    }
-
-    struct UserSaleItemList has copy, drop{
-        items: vector<String>,
     }
 
     //hot potato
@@ -132,7 +116,7 @@ module puddle_finance::puddle{
 
         transfer::share_object(puddle_statistics);
     }
-    
+    #[lint_allow(self_transfer)]
     public fun new_puddle<T: drop>(
         max_amount: u64,
         trader: address,
@@ -183,6 +167,7 @@ module puddle_finance::puddle{
         }
     }
 
+    #[lint_allow(share_owned)]
     public entry fun create_puddle<T: drop>(
         global: &mut PuddleStatistic,
         max_amount: u64,
@@ -205,7 +190,7 @@ module puddle_finance::puddle{
         transfer::transfer(puddle_cap, trader);
 
     }
-
+    #[lint_allow(self_transfer)]
     public entry fun mint <T: drop>(
         puddle: &mut Puddle<T>,
         amount: u64, 
@@ -272,7 +257,7 @@ module puddle_finance::puddle{
         vector::destroy_empty(shares_vec);
         
     }
-
+    #[lint_allow(self_transfer)]
     public entry fun divide_shares<T: drop>(
         shares: &mut PuddleShare<T>,
         amount: u64,
@@ -291,7 +276,7 @@ module puddle_finance::puddle{
 
         transfer::public_transfer(new_shares, tx_context::sender(ctx));
     }
-
+    #[lint_allow(custom_state_change)]
     public entry fun transfer_shares<T: drop>(
         puddle: &mut Puddle<T>,
         shares: PuddleShare<T>,
@@ -340,7 +325,7 @@ module puddle_finance::puddle{
             }
         }
     }
-
+    #[lint_allow(self_transfer)]
     public entry fun close_puddle<T: drop>(
         cap: &PuddleCap<T>, 
         global: &mut PuddleStatistic,
@@ -352,7 +337,7 @@ module puddle_finance::puddle{
         assert!(puddle.state.is_close ==false, EPuddleAlreadyClosed);
         puddle.state.is_close = true;
         
-        let (is_existed, index_of_in_progress_puddle) = vector::index_of<ID>(&mut global.in_progress_puddles, &object::uid_to_inner(&puddle.id));
+        let (is_existed, index_of_in_progress_puddle) = vector::index_of<ID>(&global.in_progress_puddles, &object::uid_to_inner(&puddle.id));
         assert!(is_existed, EPuddleNotFound);
         vector::swap_remove(&mut global.in_progress_puddles, index_of_in_progress_puddle);
         vector::push_back(&mut global.closed_puddles, object::uid_to_inner(&puddle.id));
@@ -417,7 +402,7 @@ module puddle_finance::puddle{
         } 
     }
         
-    
+    #[allow(unused_mut_ref)]
     public entry fun arbitrage<CoinA: drop , CoinB: drop >(
         _puddle_cap: &mut PuddleCap<CoinB>,
         puddle: &mut Puddle<CoinB>,
@@ -517,7 +502,7 @@ module puddle_finance::puddle{
         let total_supply = puddle.metadata.total_supply;
 
         while(i < vector::length(&puddle.holder_info.holders)){
-            let user_addr = *vector::borrow<address>(&mut puddle.holder_info.holders, i);
+            let user_addr = *vector::borrow<address>(&puddle.holder_info.holders, i);
             let user_shares_amount = table::remove<address, u64>(&mut puddle.holder_info.holder_amount_table, user_addr);
             let user_rewards =  balance::value<T>(total_rewards) * user_shares_amount / total_supply;
             
@@ -534,18 +519,6 @@ module puddle_finance::puddle{
                 continue
             }
         }
-    }
-
-    fun coins_to_balances<T>(coins: vector<Coin<T>>):vector<Balance<T>>{
-        let res = vector::empty<Balance<T>>();
-
-        while(vector::length(&coins) > 0){
-            let coin_member = vector::pop_back<Coin<T>>(&mut coins);
-            vector::push_back<Balance<T>>(&mut res, coin::into_balance(coin_member));
-        };
-        vector::destroy_empty<Coin<T>>(coins);
-
-        return res
     }
 
     public fun remove_market_item<T: drop>(
@@ -599,7 +572,7 @@ module puddle_finance::puddle{
     ){
         let kiosk_id =  *object:: borrow_id(kiosk_obj);
 
-        if (!table::contains(&mut puddle.market_info.kiosk_item_table, kiosk_id)){
+        if (!table::contains(&puddle.market_info.kiosk_item_table, kiosk_id)){
             vector::push_back(&mut puddle.market_info.kiosk_objs, kiosk_id);
             let items = vector::empty<ID>();
             vector::push_back(&mut items, item_id);
@@ -618,4 +591,9 @@ module puddle_finance::puddle{
         puddle.state.is_close
     }
     
+    public fun get_shares_of_puddle_share<T: drop>(
+        share: &PuddleShare<T>
+    ): u64{
+        share.shares
+    }
 }

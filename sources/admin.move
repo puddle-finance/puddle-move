@@ -60,7 +60,7 @@ module puddle_finance::admin{
         admin_vector: &mut AdminVec,
         new_member: address, 
         ctx: &mut TxContext){
-            assert!(!vec_set::contains<address>(&mut admin_vector.admins, &new_member),EAlreadyAdmin );
+            assert!(!vec_set::contains<address>(&admin_vector.admins, &new_member),EAlreadyAdmin );
             vec_set::insert<address>(&mut admin_vector.admins, new_member);
 
             let admin_cap = AdminCap{id: object::new(ctx),};
@@ -100,7 +100,7 @@ module puddle_finance::admin{
          ctx: &mut TxContext,
     ){
         let coin_type= string::from_ascii(type_name::into_string(type_name::get<T>()));
-        assert!(vec_set::contains<address>(&mut admin_vector.admins, &tx_context::sender(ctx)), EAdminNotFound);
+        assert!(vec_set::contains<address>(&admin_vector.admins, &tx_context::sender(ctx)), EAdminNotFound);
         let total_balance = bag::borrow_mut<String, Balance<T>>(&mut fund.balance_bag, coin_type);
         assert!(balance::value<T>(total_balance) >= amount, EBalanceNotEnough);
 

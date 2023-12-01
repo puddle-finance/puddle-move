@@ -6,7 +6,6 @@ module puddle_finance::market{
     use sui::transfer::{Self};
     use sui::sui::{SUI};
     use sui::coin::{Self, Coin};
-    use sui::balance::{Self,};
     use std::option::{Self,};
     use sui::package;
     use sui::transfer_policy::{Self, TransferPolicy, TransferPolicyCap};
@@ -22,7 +21,7 @@ module puddle_finance::market{
     const EBalanceNtEnough: u64 = 2;
     const ENotInKiosk: u64 = 3;
     const EUserAlreadyHaveKiosk: u64 = 4;
-    const EPolicyHasNoRewards: u64 = 5;
+    const EOverShares:u64 = 5;
 
     struct MarketState has key{
         id: UID,
@@ -33,6 +32,7 @@ module puddle_finance::market{
     struct MARKET has drop{}
 
     #[allow(unused_function)]
+    #[lint_allow(share_owned)]
     fun init (witness: MARKET, ctx: &mut TxContext){
 
         let publisher = package::claim(witness, ctx);
@@ -53,6 +53,7 @@ module puddle_finance::market{
         transfer::public_transfer(publisher, tx_context::sender(ctx));
 
     }
+    #[lint_allow(share_owned, self_transfer)]
     public entry fun create_market(
         market_state: &mut MarketState,
         ctx: &mut TxContext,
@@ -70,14 +71,20 @@ module puddle_finance::market{
         puddle: &mut Puddle<T>,
         price_table: &mut MarketState,
         share: PuddleShare<T>,
+        amount: u64,
         price: u64,
-        _ctx: &mut TxContext,
+        ctx: &mut TxContext,
     ){
         
         assert!(puddle::get_puddle_close_state(puddle) ==false, EPuddleClosed);
-
+        
         let item_id = *object::borrow_id(&share);
         assert!(!kiosk::has_item(kiosk_obj, item_id), EAlreadyInKiosk);
+
+        let shares = puddle::get_shares_of_puddle_share<T>(&share);
+        assert!(shares > amount, EOverShares);
+        
+        puddle::divide_shares(&mut share, shares - amount, ctx);
         
         kiosk::place(kiosk_obj, kiosk_cap, share);
         kiosk::list<PuddleShare<T>>(kiosk_obj, kiosk_cap, item_id, price, );
@@ -88,23 +95,24 @@ module puddle_finance::market{
     }
 
     // T is now just supported SUI.
+    #[lint_allow(self_transfer)]
     public entry fun buy_share<T: drop>(
         kiosk_obj: &mut Kiosk,
         puddle: &mut Puddle<T>,
         price_table: &mut MarketState,
         policy: &mut TransferPolicy<PuddleShare<T>>,
-        id: ID,
+        share_id: ID,
         payments: Coin<SUI>,
         clock: &Clock,
         ctx: &mut TxContext,
     ){
         assert!(puddle::get_puddle_close_state(puddle) ==false, EPuddleClosed);
-        assert!(kiosk::has_item(kiosk_obj, id), ENotInKiosk);
+        assert!(kiosk::has_item(kiosk_obj, share_id), ENotInKiosk);
 
         let buyer = tx_context::sender(ctx);
         let saler = kiosk::owner(kiosk_obj);
 
-        let paid = table::remove<ID, u64>(&mut price_table.item_price_table, id);
+        let paid = table::remove<ID, u64>(&mut price_table.item_price_table, share_id);
 
         let increase = puddle::decrease_share_amount<T>(
             puddle,
@@ -121,7 +129,7 @@ module puddle_finance::market{
         puddle::remove_market_item<T>(
             kiosk_obj,
             puddle,
-            id,
+            share_id,
         );
 
 
@@ -135,7 +143,7 @@ module puddle_finance::market{
 
         let (share, transfer_req) = kiosk::purchase<PuddleShare<T>>(
             kiosk_obj,
-            id,
+            share_id,
             pay_item,
         );
 

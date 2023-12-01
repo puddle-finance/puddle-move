@@ -7,8 +7,6 @@ module puddle_finance::royalty_rule{
 
     const MAX_BP: u16 = 10_000;
     const EOverMaxBp: u64 = 0;
-    const EInsufficientAmount: u64 = 1;
-
     struct Rule has drop {}
 
 
