@@ -16,6 +16,7 @@ module puddle_finance::market{
     use puddle_finance::puddle::{Self, Puddle, PuddleShare};
     use puddle_finance::admin::{Self,TeamFund};
 
+
     const EPuddleClosed: u64 = 0;
     const EAlreadyInKiosk: u64 = 1;
     const EBalanceNtEnough: u64 = 2;
@@ -54,12 +55,19 @@ module puddle_finance::market{
 
     }
     #[lint_allow(share_owned, self_transfer)]
-    public entry fun create_market(
+    public entry fun create_market<T: drop>(
         market_state: &mut MarketState,
+        policy: &mut TransferPolicy<PuddleShare<T>>,
+        policy_cap: &TransferPolicyCap<PuddleShare<T>>,
+        amount_bp: u16,
+        start_time: u64,
         ctx: &mut TxContext,
     ){
         assert!(!table::contains<address, ID>(&market_state.user_kiosk_table, tx_context::sender(ctx)), EUserAlreadyHaveKiosk);
         let (kiosk, kiosk_cap) = kiosk::new(ctx);
+
+        royalty_rule::add_royalty_rule(policy, policy_cap, amount_bp);
+        time_rule::add_time_rule(policy, policy_cap, start_time);
 
         table::add(&mut market_state.user_kiosk_table, tx_context::sender(ctx), object::id(&kiosk_cap));
 
@@ -85,6 +93,7 @@ module puddle_finance::market{
 
         let shares = puddle::get_shares_of_puddle_share<T>(&share);
         assert!(shares > amount, EOverShares);
+        
         
         puddle::divide_shares(&mut share, shares - amount, ctx);
         
