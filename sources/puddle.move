@@ -544,7 +544,7 @@ module puddle_finance::puddle{
             table::add(&mut puddle.holder_info.holder_amount_table, saler, saler_amount);
         };
         Increase{
-            amount: saler_amount,
+            amount: amount,
         }
     }
 
