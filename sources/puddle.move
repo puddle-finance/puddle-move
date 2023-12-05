@@ -537,8 +537,10 @@ module puddle_finance::puddle{
         amount: u64,
         saler: address,
     ): Increase{
-
         let saler_amount = table::remove(&mut puddle.holder_info.holder_amount_table, saler);
+
+        assert!(saler_amount >= amount, EBalanceNotEnough);
+        
         saler_amount = saler_amount - amount;
         if (saler_amount != 0){
             table::add(&mut puddle.holder_info.holder_amount_table, saler, saler_amount);

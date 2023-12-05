@@ -27,6 +27,7 @@ module puddle_finance::market{
     struct MarketState has key{
         id: UID,
         item_price_table: Table<ID, u64>,
+        item_share_amount: Table<ID, u64>,
         user_kiosk_table: Table<address, ID>,
     }
 
@@ -43,6 +44,7 @@ module puddle_finance::market{
         let price_table = MarketState{
             id: object::new(ctx),
             item_price_table: table::new<ID, u64>(ctx),
+            item_share_amount: table::new<ID, u64>(ctx),
             user_kiosk_table: table::new<address, ID>(ctx),
         };
 
@@ -72,7 +74,7 @@ module puddle_finance::market{
         kiosk_obj: &mut Kiosk,
         kiosk_cap: &KioskOwnerCap,
         puddle: &mut Puddle<T>,
-        price_table: &mut MarketState,
+        market_state: &mut MarketState,
         share: PuddleShare<T>,
         amount: u64,
         price: u64,
@@ -93,9 +95,10 @@ module puddle_finance::market{
         kiosk::place(kiosk_obj, kiosk_cap, share);
         kiosk::list<PuddleShare<T>>(kiosk_obj, kiosk_cap, item_id, price, );
         
-        table::add(&mut price_table.item_price_table, item_id, price);
+        table::add(&mut market_state.item_price_table, item_id, price);
+        table::add(&mut market_state.item_share_amount, item_id, shares);
         puddle::add_market_info<T>(puddle, kiosk_obj, item_id);
-
+        
     }
 
     // T is now just supported SUI.
@@ -103,7 +106,7 @@ module puddle_finance::market{
     public entry fun buy_share<T: drop>(
         kiosk_obj: &mut Kiosk,
         puddle: &mut Puddle<T>,
-        price_table: &mut MarketState,
+        market_state: &mut MarketState,
         policy: &mut TransferPolicy<PuddleShare<T>>,
         share_id: ID,
         payments: Coin<SUI>,
@@ -116,11 +119,12 @@ module puddle_finance::market{
         let buyer = tx_context::sender(ctx);
         let saler = kiosk::owner(kiosk_obj);
 
-        let paid = table::remove<ID, u64>(&mut price_table.item_price_table, share_id);
+        let paid = table::remove<ID, u64>(&mut market_state.item_price_table, share_id);
+        let shares = table::remove<ID, u64>(&mut market_state.item_share_amount, share_id);
 
         let increase = puddle::decrease_share_amount<T>(
             puddle,
-            paid,
+            shares,
             saler,
         );
 
