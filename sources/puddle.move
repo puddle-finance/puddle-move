@@ -228,7 +228,6 @@ module puddle_finance::puddle{
         transfer::public_transfer(shares, tx_context::sender(ctx));
     }
 
-
     public entry fun merge_shares<T: drop>(
         base: &mut PuddleShare<T>,
         shares_vec: vector<PuddleShare<T>>,
@@ -525,10 +524,12 @@ module puddle_finance::puddle{
         puddle: &mut Puddle<T>,
         item: ID,
     ){
-        let items = table::borrow_mut(&mut puddle.market_info.kiosk_item_table,  *object::borrow_id(kiosk_obj));
-        let (is_existed, index) = vector::index_of(items, &item);
+        let kiosk_id = *object::borrow_id(kiosk_obj);
+        let items = table::remove<ID, vector<ID>>(&mut puddle.market_info.kiosk_item_table,  kiosk_id);
+        let (is_existed, index) = vector::index_of(&items, &item);
         assert!(is_existed, ENotInKiosk);
-        vector::swap_remove(items, index);
+        vector::swap_remove(&mut items, index);
+        table::add(&mut puddle.market_info.kiosk_item_table, kiosk_id, items);
     }
 
     public fun decrease_share_amount<T: drop>(
@@ -541,7 +542,7 @@ module puddle_finance::puddle{
         assert!(saler_amount >= amount, EBalanceNotEnough);
         
         saler_amount = saler_amount - amount;
-        
+
         if (saler_amount != 0){
             table::add(&mut puddle.holder_info.holder_amount_table, saler, saler_amount);
         };
