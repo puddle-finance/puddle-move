@@ -38,7 +38,7 @@ module puddle_finance::time_rule{
         transfer_policy::add_receipt(Rule{}, request);
     }
 
-    public fun remove_royalty_rule<T>(
+    public fun remove_time_rule<T>(
         policy: &mut TransferPolicy<T>,
         cap: &TransferPolicyCap<T>,
     ){

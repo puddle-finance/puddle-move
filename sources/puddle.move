@@ -188,7 +188,6 @@ module puddle_finance::puddle{
         table::add<ID, address>(&mut global.puddle_owner_table, object::uid_to_inner(&puddle.id), tx_context::sender(ctx));
         transfer::public_share_object(puddle);
         transfer::transfer(puddle_cap, trader);
-
     }
     #[lint_allow(self_transfer)]
     public entry fun mint <T: drop>(
@@ -200,7 +199,7 @@ module puddle_finance::puddle{
         assert!(puddle.state.is_stop_mint == false, EPuddleAlreadyStopMint);
         assert!(puddle.state.is_close ==false, EPuddleAlreadyClosed);
         assert!(coin::value(coins) >= amount, EObjectCoinNotEnough);
-        assert!(coin::value(coins) + balance::value<T>(&puddle.balance) <= puddle.metadata.max_supply, EOverMaxAmount);
+        assert!(amount + balance::value<T>(&puddle.balance) <= puddle.metadata.max_supply, EOverMaxAmount);
         
         let sender = tx_context::sender(ctx); 
         let invest_coins = coin::split<T>(coins,amount, ctx);
@@ -542,6 +541,7 @@ module puddle_finance::puddle{
         assert!(saler_amount >= amount, EBalanceNotEnough);
         
         saler_amount = saler_amount - amount;
+        
         if (saler_amount != 0){
             table::add(&mut puddle.holder_info.holder_amount_table, saler, saler_amount);
         };

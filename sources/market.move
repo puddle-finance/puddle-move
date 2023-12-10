@@ -9,10 +9,9 @@ module puddle_finance::market{
     use std::option::{Self,};
     use sui::package;
     use sui::transfer_policy::{Self, TransferPolicy, TransferPolicyCap};
-    use sui::clock::{Clock};
     use sui::table::{Self,Table};
-    use puddle_finance::royalty_rule::{Self};
-    use puddle_finance::time_rule::{Self};
+    // use puddle_finance::royalty_rule::{Self};
+    // use puddle_finance::time_rule::{Self};
     use puddle_finance::puddle::{Self, Puddle, PuddleShare};
     use puddle_finance::admin::{Self,TeamFund};
 
@@ -87,7 +86,7 @@ module puddle_finance::market{
         assert!(!kiosk::has_item(kiosk_obj, item_id), EAlreadyInKiosk);
 
         let shares = puddle::get_shares_of_puddle_share<T>(&share);
-        assert!(shares > amount, EOverShares);
+        assert!(shares >= amount, EOverShares);
         
         
         puddle::divide_shares(&mut share, shares - amount, ctx);
@@ -110,7 +109,7 @@ module puddle_finance::market{
         policy: &mut TransferPolicy<PuddleShare<T>>,
         share_id: ID,
         payments: Coin<SUI>,
-        clock: &Clock,
+        //clock: &Clock,
         ctx: &mut TxContext,
     ){
         assert!(puddle::get_puddle_close_state(puddle) ==false, EPuddleClosed);
@@ -120,6 +119,8 @@ module puddle_finance::market{
         let saler = kiosk::owner(kiosk_obj);
 
         let paid = table::remove<ID, u64>(&mut market_state.item_price_table, share_id);
+        let payments_value = coin::value(&payments);
+        assert!(payments_value >= paid, EBalanceNtEnough);
         let shares = table::remove<ID, u64>(&mut market_state.item_share_amount, share_id);
 
         let increase = puddle::decrease_share_amount<T>(
@@ -140,27 +141,40 @@ module puddle_finance::market{
             share_id,
         );
 
+        // let royalty_req = royalty_rule::calculate_royalty(policy, paid);
+        // let royalty_value = royalty_rule::get_royalty_value(&royalty_req);
+        //assert!( coin::value(&payments) >=  (royalty_value + paid), EBalanceNtEnough);
 
+        if (payments_value > paid){
+            let pay_item = coin::split(&mut payments, paid, ctx); 
+            let (share, transfer_req) = kiosk::purchase<PuddleShare<T>>(
+                kiosk_obj,
+                share_id,
+                pay_item,
+            );
+            transfer::public_transfer(share, tx_context::sender(ctx));
+            transfer_policy::confirm_request(policy, transfer_req);
+            transfer::public_transfer(payments, tx_context::sender(ctx));
+
+        }else{
+            let (share, transfer_req) = kiosk::purchase<PuddleShare<T>>(
+                kiosk_obj,
+                share_id,
+                payments,
+            );
+            transfer_policy::confirm_request(policy, transfer_req);
+            transfer::public_transfer(share, tx_context::sender(ctx));
+        };
         
-        let royalty_req = royalty_rule::calculate_royalty(policy, paid);
-        let royalty_value = royalty_rule::get_royalty_value(&royalty_req);
-        assert!( coin::value(&payments) >=  (royalty_value + paid), EBalanceNtEnough);
+        //let royalty_fee = coin::split(&mut payments, royalty_value, ctx); 
+
+        // royalty_rule::handle_royalty<PuddleShare<T>>(policy, &mut transfer_req, royalty_req, royalty_fee);
+        // time_rule::confirm_time<PuddleShare<T>>(policy, &mut transfer_req, clock);
         
-        let royalty_fee = coin::split(&mut payments, royalty_value, ctx); 
-        let pay_item = coin::split(&mut payments, paid, ctx); 
 
-        let (share, transfer_req) = kiosk::purchase<PuddleShare<T>>(
-            kiosk_obj,
-            share_id,
-            pay_item,
-        );
+        //transfer_policy::confirm_request(policy, transfer_req);
+        
 
-        royalty_rule::handle_royalty<PuddleShare<T>>(policy, &mut transfer_req, royalty_req, royalty_fee);
-        time_rule::confirm_time<PuddleShare<T>>(policy, &mut transfer_req, clock);
-        transfer::public_transfer(payments, tx_context::sender(ctx));
-
-        transfer_policy::confirm_request(policy, transfer_req);
-        transfer::public_transfer(share, tx_context::sender(ctx));
     }
 
     public entry fun withdraw_policy_rewards<T>(
