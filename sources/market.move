@@ -88,14 +88,13 @@ module puddle_finance::market{
         let shares = puddle::get_shares_of_puddle_share<T>(&share);
         assert!(shares >= amount, EOverShares);
         
-        
         puddle::divide_shares(&mut share, shares - amount, ctx);
         
         kiosk::place(kiosk_obj, kiosk_cap, share);
         kiosk::list<PuddleShare<T>>(kiosk_obj, kiosk_cap, item_id, price, );
         
         table::add(&mut market_state.item_price_table, item_id, price);
-        table::add(&mut market_state.item_share_amount, item_id, shares);
+        table::add(&mut market_state.item_share_amount, item_id, amount);
         puddle::add_market_info<T>(puddle, kiosk_obj, item_id);
         
     }
