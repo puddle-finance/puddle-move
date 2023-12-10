@@ -563,6 +563,7 @@ module puddle_finance::puddle{
         };
 
         buyer_amount = buyer_amount + amount;
+        vector::push_back(&mut puddle.holder_info.holders, buyer);
         table::add(&mut puddle.holder_info.holder_amount_table, buyer, buyer_amount);
         
     }
