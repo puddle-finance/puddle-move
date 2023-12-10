@@ -599,4 +599,10 @@ module puddle_finance::puddle{
     ): u64{
         share.shares
     }
+
+    public fun switch_owner<T: drop >(
+        share: &mut PuddleShare<T>, 
+        new_owner: address){
+        share.owner = new_owner;
+    }
 }

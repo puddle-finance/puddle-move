@@ -146,7 +146,7 @@ module puddle_finance::market{
         //assert!( coin::value(&payments) >=  (royalty_value + paid), EBalanceNtEnough);
 
         if (payments_value > paid){
-            let pay_item = coin::split(&mut payments, paid, ctx); 
+            let   pay_item= coin::split(&mut payments, paid, ctx); 
             let (share, transfer_req) = kiosk::purchase<PuddleShare<T>>(
                 kiosk_obj,
                 share_id,
@@ -162,6 +162,8 @@ module puddle_finance::market{
                 share_id,
                 payments,
             );
+            
+            puddle::switch_owner<T>(&mut share, buyer);
             transfer_policy::confirm_request(policy, transfer_req);
             transfer::public_transfer(share, tx_context::sender(ctx));
         };
