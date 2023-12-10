@@ -152,8 +152,9 @@ module puddle_finance::market{
                 share_id,
                 pay_item,
             );
-            transfer::public_transfer(share, tx_context::sender(ctx));
+            puddle::switch_owner<T>(&mut share, buyer);
             transfer_policy::confirm_request(policy, transfer_req);
+            transfer::public_transfer(share, tx_context::sender(ctx));
             transfer::public_transfer(payments, tx_context::sender(ctx));
 
         }else{
