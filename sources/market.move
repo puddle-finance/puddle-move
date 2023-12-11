@@ -195,6 +195,15 @@ module puddle_finance::market{
 
         admin::deposit(coin::into_balance(rewards), fund);
     }
+    #[lint_allow(self_transfer)]
+    public entry fun withdraw_kiosk_value(
+        kiosk_obj: &mut Kiosk,
+        kiosk_cap: &KioskOwnerCap,
+        ctx: &mut TxContext,
+    ){
 
-
+        let none = option::none<u64>();
+        let rewards = kiosk::withdraw(kiosk_obj, kiosk_cap, none, ctx);
+        transfer::public_transfer(rewards, tx_context::sender(ctx));
+    }
 }
